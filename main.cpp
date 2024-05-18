@@ -59,6 +59,9 @@ const GLchar* fragmentShaderSource = "#version 450\n"
 
 bool rotateX=false, rotateY=false, rotateZ=false;
 
+glm::vec3 translation = glm::vec3(0.0f, 0.0f, 0.0f);
+float scale = 1.0f;
+
 // Função MAIN
 int main()
 {
@@ -151,20 +154,22 @@ int main()
 		else if (rotateZ)
 		{
 			model = glm::rotate(model, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-
 		}
+
+		model = glm::translate(model, translation);
+		model = glm::scale(model, glm::vec3(scale, scale, scale));
 
 		glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 		// Chamada de desenho - drawcall
 		// Poligono Preenchido - GL_TRIANGLES
 
 		glBindVertexArray(VAO);
-		glDrawArrays(GL_TRIANGLES, 0, 18);
+		glDrawArrays(GL_TRIANGLES, 0, 72);
 
 		// Chamada de desenho - drawcall
 		// CONTORNO - GL_LINE_LOOP
 
-		glDrawArrays(GL_POINTS, 0, 18);
+		glDrawArrays(GL_POINTS, 0, 72);
 		glBindVertexArray(0);
 
 		// Troca os buffers da tela
@@ -206,8 +211,27 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		rotateZ = true;
 	}
 
+	// Movimentação nos eixos X e Z (WASD)
+	if (key == GLFW_KEY_W && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.z -= 0.1f;
+	if (key == GLFW_KEY_S && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.z += 0.1f;
+	if (key == GLFW_KEY_A && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.x -= 0.1f;
+	if (key == GLFW_KEY_D && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.x += 0.1f;
 
+	// Movimentação no eixo Y (IJ)
+	if (key == GLFW_KEY_I && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.y += 0.1f;
+	if (key == GLFW_KEY_J && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		translation.y -= 0.1f;
 
+	// Escala uniforme ([ ])
+	if (key == GLFW_KEY_LEFT_BRACKET && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		scale -= 0.1f;
+	if (key == GLFW_KEY_RIGHT_BRACKET && (action == GLFW_PRESS || action == GLFW_REPEAT))
+		scale += 0.1f;
 }
 
 //Esta função está basntante hardcoded - objetivo é compilar e "buildar" um programa de
@@ -270,36 +294,131 @@ int setupGeometry()
 	// Cada atributo do vértice (coordenada, cores, coordenadas de textura, normal, etc)
 	// Pode ser arazenado em um VBO único ou em VBOs separados
 	GLfloat vertices[] = {
+		// Face frontal (vermelho)
+		// Triângulo 1
+		-0.5, -0.5,  0.5, 1.0, 0.0, 0.0,
+		 0.5, -0.5,  0.5, 1.0, 0.0, 0.0,
+		 0.5,  0.5,  0.5, 1.0, 0.0, 0.0,
+		// Triângulo 2
+		-0.5, -0.5,  0.5, 1.0, 0.0, 0.0,
+		 0.5,  0.5,  0.5, 1.0, 0.0, 0.0,
+		-0.5,  0.5,  0.5, 1.0, 0.0, 0.0,
 
-		//Base da pirâmide: 2 triângulos
-		//x    y    z    r    g    b
+		// Face traseira (verde)
+		// Triângulo 3
+		-0.5, -0.5, -0.5, 0.0, 1.0, 0.0,
+		 0.5, -0.5, -0.5, 0.0, 1.0, 0.0,
+		 0.5,  0.5, -0.5, 0.0, 1.0, 0.0,
+		// Triângulo 4
+		-0.5, -0.5, -0.5, 0.0, 1.0, 0.0,
+		 0.5,  0.5, -0.5, 0.0, 1.0, 0.0,
+		-0.5,  0.5, -0.5, 0.0, 1.0, 0.0,
+
+		// Face superior (azul)
+		// Triângulo 5
+		-0.5,  0.5,  0.5, 0.0, 0.0, 1.0,
+		 0.5,  0.5,  0.5, 0.0, 0.0, 1.0,
+		 0.5,  0.5, -0.5, 0.0, 0.0, 1.0,
+		// Triângulo 6
+		-0.5,  0.5,  0.5, 0.0, 0.0, 1.0,
+		 0.5,  0.5, -0.5, 0.0, 0.0, 1.0,
+		-0.5,  0.5, -0.5, 0.0, 0.0, 1.0,
+
+		// Face inferior (amarelo)
+		// Triângulo 7
+		-0.5, -0.5,  0.5, 1.0, 1.0, 0.0,
+		 0.5, -0.5,  0.5, 1.0, 1.0, 0.0,
+		 0.5, -0.5, -0.5, 1.0, 1.0, 0.0,
+		// Triângulo 8
+		-0.5, -0.5,  0.5, 1.0, 1.0, 0.0,
+		 0.5, -0.5, -0.5, 1.0, 1.0, 0.0,
 		-0.5, -0.5, -0.5, 1.0, 1.0, 0.0,
-		-0.5, -0.5,  0.5, 0.0, 1.0, 1.0,
-		 0.5, -0.5, -0.5, 1.0, 0.0, 1.0,
 
-		 -0.5, -0.5, 0.5, 1.0, 1.0, 0.0,
-		  0.5, -0.5,  0.5, 0.0, 1.0, 1.0,
-		  0.5, -0.5, -0.5, 1.0, 0.0, 1.0,
+		// Face esquerda (magenta)
+		// Triângulo 9
+		-0.5, -0.5,  0.5, 1.0, 0.0, 1.0,
+		-0.5,  0.5,  0.5, 1.0, 0.0, 1.0,
+		-0.5,  0.5, -0.5, 1.0, 0.0, 1.0,
+		// Triângulo 10
+		-0.5, -0.5,  0.5, 1.0, 0.0, 1.0,
+		-0.5,  0.5, -0.5, 1.0, 0.0, 1.0,
+		-0.5, -0.5, -0.5, 1.0, 0.0, 1.0,
 
-		 //
-		 -0.5, -0.5, -0.5, 1.0, 1.0, 0.0,
-		  0.0,  0.5,  0.0, 1.0, 1.0, 0.0,
-		  0.5, -0.5, -0.5, 1.0, 1.0, 0.0,
+		// Face direita (ciano)
+		// Triângulo 11
+		 0.5, -0.5,  0.5, 0.0, 1.0, 1.0,
+		 0.5,  0.5,  0.5, 0.0, 1.0, 1.0,
+		 0.5,  0.5, -0.5, 0.0, 1.0, 1.0,
+		// Triângulo 12
+		 0.5, -0.5,  0.5, 0.0, 1.0, 1.0,
+		 0.5,  0.5, -0.5, 0.0, 1.0, 1.0,
+		 0.5, -0.5, -0.5, 0.0, 1.0, 1.0,
 
-		  -0.5, -0.5, -0.5, 1.0, 0.0, 1.0,
-		  0.0,  0.5,  0.0, 1.0, 0.0, 1.0,
-		  -0.5, -0.5, 0.5, 1.0, 0.0, 1.0,
+		// segundo cubo
 
-		   -0.5, -0.5, 0.5, 1.0, 1.0, 0.0,
-		  0.0,  0.5,  0.0, 1.0, 1.0, 0.0,
-		  0.5, -0.5, 0.5, 1.0, 1.0, 0.0,
+		// Face frontal (vermelho)
+		// Triângulo 1
+		-0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
+		 0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
+		 0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
+		// Triângulo 2
+		-0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
+		 0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
+		-0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
 
-		   0.5, -0.5, 0.5, 0.0, 1.0, 1.0,
-		  0.0,  0.5,  0.0, 0.0, 1.0, 1.0,
-		  0.5, -0.5, -0.5, 0.0, 1.0, 1.0,
+		// Face traseira (verde)
+		// Triângulo 3
+		-0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
+		 0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
+		 0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
+		// Triângulo 4
+		-0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
+		 0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
+		-0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
+
+		// Face superior (azul)
+		// Triângulo 5
+		-0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
+		 0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
+		 0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
+		// Triângulo 6
+		-0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
+		 0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
+		-0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
+
+		// Face inferior (amarelo)
+		// Triângulo 7
+		-0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
+		 0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
+		 0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
+		// Triângulo 8
+		-0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
+		 0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
+		-0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
+
+		// Face esquerda (magenta)
+		// Triângulo 9
+		-0.25, -0.25,  1.0, 1.0, 0.4, 1.0,
+		-0.25,  0.25,  1.0, 1.0, 0.4, 1.0,
+		-0.25,  0.25,  1.5, 1.0, 0.4, 1.0,
+		// Triângulo 10
+		-0.25, -0.25,  1.0, 1.0, 0.4, 1.0,
+		-0.25,  0.25,  1.5, 1.0, 0.4, 1.0,
+		-0.25, -0.25,  1.5, 1.0, 0.4, 1.0,
+
+		// Face direita (ciano)
+		// Triângulo 11
+		 0.25, -0.25,  1.0, 0.6, 1.0, 1.0,
+		 0.25,  0.25,  1.0, 0.6, 1.0, 1.0,
+		 0.25,  0.25,  1.5, 0.6, 1.0, 1.0,
+		// Triângulo 12
+		 0.25, -0.25,  1.0, 0.6, 1.0, 1.0,
+		 0.25,  0.25,  1.5, 0.6, 1.0, 1.0,
+		 0.25, -0.25,  1.5, 0.6, 1.0, 1.0,
 
 
 	};
+
 
 	GLuint VBO, VAO;
 
