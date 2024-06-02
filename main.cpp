@@ -10,8 +10,15 @@
 #include <iostream>
 #include <string>
 #include <assert.h>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
 using namespace std;
+
+// STB_IMAGE
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 // GLAD
 #include <glad/glad.h>
@@ -31,31 +38,37 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 // Protótipos das funções
 int setupShader();
 int setupGeometry();
+int loadTexture(string path);
+int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color);
+
+// GLuint generateTexture(const std::string& filename);
 
 // Dimensões da janela (pode ser alterado em tempo de execução)
 const GLuint WIDTH = 1000, HEIGHT = 1000;
 
-// Código fonte do Vertex Shader (em GLSL): ainda hardcoded
 const GLchar* vertexShaderSource = "#version 450\n"
 "layout (location = 0) in vec3 position;\n"
 "layout (location = 1) in vec3 color;\n"
+"layout (location = 2) in vec2 texCoord;\n"
 "uniform mat4 model;\n"
 "out vec4 finalColor;\n"
+"out vec2 TexCoord;\n"
 "void main()\n"
 "{\n"
-//...pode ter mais linhas de código aqui!
 "gl_Position = model * vec4(position, 1.0);\n"
 "finalColor = vec4(color, 1.0);\n"
+"TexCoord = texCoord;\n"
 "}\0";
 
-//Códifo fonte do Fragment Shader (em GLSL): ainda hardcoded
 const GLchar* fragmentShaderSource = "#version 450\n"
 "in vec4 finalColor;\n"
+"in vec2 TexCoord;\n"
 "out vec4 color;\n"
+"uniform sampler2D ourTexture;\n"
 "void main()\n"
 "{\n"
-"color = finalColor;\n"
-"}\n\0";
+"color = texture(ourTexture, TexCoord);\n"
+"}\0";
 
 bool rotateX=false, rotateY=false, rotateZ=false;
 
@@ -65,6 +78,7 @@ float scale = 1.0f;
 // Função MAIN
 int main()
 {
+
 	// Inicialização da GLFW
 	glfwInit();
 
@@ -106,15 +120,18 @@ int main()
 	glfwGetFramebufferSize(window, &width, &height);
 	glViewport(0, 0, width, height);
 
-
 	// Compilando e buildando o programa de shader
 	GLuint shaderID = setupShader();
 
-	// Gerando um buffer simples, com a geometria de um triângulo
-	GLuint VAO = setupGeometry();
-
-
 	glUseProgram(shaderID);
+
+	//Carregando uma textura e armazenando o identificador na memória
+	GLuint texID = loadTexture("../Cube.png");
+
+	// Gerando uma geometria de quadrilátero com coordenadas de textura
+	int nVerts;
+	GLuint VAO = loadSimpleOBJ("../cube.obj", nVerts,glm::vec3(0,0,0));
+	glUniform1i(glGetUniformLocation(shaderID, "tex_buffer"), 0);
 
 	glm::mat4 model = glm::mat4(1); //matriz identidade;
 	GLint modelLoc = glGetUniformLocation(shaderID, "model");
@@ -163,14 +180,15 @@ int main()
 		// Chamada de desenho - drawcall
 		// Poligono Preenchido - GL_TRIANGLES
 
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texID);
+		glUniform1i(glGetUniformLocation(shaderID, "ourTexture"), 0);
+
 		glBindVertexArray(VAO);
-		glDrawArrays(GL_TRIANGLES, 0, 72);
+		glDrawArrays(GL_TRIANGLES, 0, nVerts);
 
-		// Chamada de desenho - drawcall
-		// CONTORNO - GL_LINE_LOOP
-
-		glDrawArrays(GL_POINTS, 0, 72);
-		glBindVertexArray(0);
+		glBindVertexArray(0); //unbind - desconecta
+		glBindTexture(GL_TEXTURE_2D, 0); //unbind da textura
 
 		// Troca os buffers da tela
 		glfwSwapBuffers(window);
@@ -354,69 +372,6 @@ int setupGeometry()
 		 0.5,  0.5, -0.5, 0.0, 1.0, 1.0,
 		 0.5, -0.5, -0.5, 0.0, 1.0, 1.0,
 
-		// segundo cubo
-
-		// Face frontal (vermelho)
-		// Triângulo 1
-		-0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
-		 0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
-		 0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
-		// Triângulo 2
-		-0.25, -0.25,  1.0, 1.0, 0.4, 0.0,
-		 0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
-		-0.25,  0.25,  1.0, 1.0, 0.4, 0.0,
-
-		// Face traseira (verde)
-		// Triângulo 3
-		-0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
-		 0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
-		 0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
-		// Triângulo 4
-		-0.25, -0.25, 1.5, 0.6, 1.0, 0.0,
-		 0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
-		-0.25,  0.25, 1.5, 0.6, 1.0, 0.0,
-
-		// Face superior (azul)
-		// Triângulo 5
-		-0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
-		 0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
-		 0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
-		// Triângulo 6
-		-0.25,  0.25,  1.0, 0.0, 0.7, 1.0,
-		 0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
-		-0.25,  0.25,  1.5, 0.0, 0.7, 1.0,
-
-		// Face inferior (amarelo)
-		// Triângulo 7
-		-0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
-		 0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
-		 0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
-		// Triângulo 8
-		-0.25, -0.25,  1.0, 1.0, 1.0, 0.5,
-		 0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
-		-0.25, -0.25,  1.5, 1.0, 1.0, 0.5,
-
-		// Face esquerda (magenta)
-		// Triângulo 9
-		-0.25, -0.25,  1.0, 1.0, 0.4, 1.0,
-		-0.25,  0.25,  1.0, 1.0, 0.4, 1.0,
-		-0.25,  0.25,  1.5, 1.0, 0.4, 1.0,
-		// Triângulo 10
-		-0.25, -0.25,  1.0, 1.0, 0.4, 1.0,
-		-0.25,  0.25,  1.5, 1.0, 0.4, 1.0,
-		-0.25, -0.25,  1.5, 1.0, 0.4, 1.0,
-
-		// Face direita (ciano)
-		// Triângulo 11
-		 0.25, -0.25,  1.0, 0.6, 1.0, 1.0,
-		 0.25,  0.25,  1.0, 0.6, 1.0, 1.0,
-		 0.25,  0.25,  1.5, 0.6, 1.0, 1.0,
-		// Triângulo 12
-		 0.25, -0.25,  1.0, 0.6, 1.0, 1.0,
-		 0.25,  0.25,  1.5, 0.6, 1.0, 1.0,
-		 0.25, -0.25,  1.5, 0.6, 1.0, 1.0,
-
-
 	};
 
 
@@ -463,5 +418,170 @@ int setupGeometry()
 	// Desvincula o VAO (é uma boa prática desvincular qualquer buffer ou array para evitar bugs medonhos)
 	glBindVertexArray(0);
 
+	return VAO;
+}
+
+int loadTexture(string path)
+{
+	GLuint texID;
+
+	// Gera o identificador da textura na memória
+	glGenTextures(1, &texID);
+	glBindTexture(GL_TEXTURE_2D, texID);
+
+	//Ajusta os parâmetros de wrapping e filtering
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	//Carregamento da imagem
+	int width, height, nrChannels;
+	stbi_set_flip_vertically_on_load(true);
+	unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 0);
+
+	if (data)
+	{
+
+		if (nrChannels == 3) //jpg, bmp
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+		}
+		else if (nrChannels == 4)
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+		}
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		std::cout << "Failed to load texture" << std::endl;
+	}
+
+	stbi_image_free(data);
+
+	return texID;
+}
+
+int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color)
+{
+	vector<glm::vec3> vertices;
+	vector <GLuint> indices;
+	vector <glm::vec2> texCoords;
+	vector <glm::vec3> normals;
+	vector <GLfloat> vbuffer;
+
+	ifstream inputFile;
+	inputFile.open(filepath.c_str());
+	if (inputFile.is_open())
+	{
+		char line[100];
+		string sline;
+
+		while (!inputFile.eof())
+		{
+			inputFile.getline(line, 100);
+			sline = line;
+
+			string word;
+
+			istringstream ssline(line);
+			ssline >> word;
+			//cout << word << " ";
+			if (word == "v")
+			{
+				glm::vec3 v;
+				ssline >> v.x >> v.y >> v.z;
+
+				std::cout << "V: " << v.x << v.y << v.z << std::endl;
+				vertices.push_back(v);
+			}
+			if (word == "vt")
+			{
+				glm::vec2 vt;
+				ssline >> vt.s >> vt.t;
+				std::cout << "VT: " << vt.s << vt.t << std::endl;
+
+				texCoords.push_back(vt);
+			}
+			if (word == "vn")
+			{
+				glm::vec3 vn;
+				ssline >> vn.x >> vn.y >> vn.z;
+				std::cout << "V: " << vn.x << vn.y << vn.z << std::endl;
+
+				normals.push_back(vn);
+			}
+			if (word == "f")
+			{
+				string tokens[3];
+
+				ssline >> tokens[0] >> tokens[1] >> tokens[2];
+
+				for (int i = 0; i < 3; i++)
+				{
+					//Recuperando os indices de v
+					int pos = tokens[i].find("/");
+					string token = tokens[i].substr(0, pos);
+					int index = atoi(token.c_str()) - 1;
+					indices.push_back(index);
+
+					vbuffer.push_back(vertices[index].x);
+					vbuffer.push_back(vertices[index].y);
+					vbuffer.push_back(vertices[index].z);
+
+					vbuffer.push_back(color.r);
+					vbuffer.push_back(color.g);
+					vbuffer.push_back(color.b);
+
+					//Recuperando os indices de vts
+					tokens[i] = tokens[i].substr(pos + 1);
+					pos = tokens[i].find("/");
+					token = tokens[i].substr(0, pos);
+					index = atoi(token.c_str()) - 1;
+					vbuffer.push_back(texCoords[index].s);
+					vbuffer.push_back(texCoords[index].t);
+
+					//Recuperando os indices de vns
+					tokens[i] = tokens[i].substr(pos + 1);
+					index = atoi(tokens[i].c_str()) - 1;
+					vbuffer.push_back(normals[index].x);
+					vbuffer.push_back(normals[index].y);
+					vbuffer.push_back(normals[index].z);
+				}
+			}
+		}
+	}
+	else
+	{
+		cout << "Problema ao encontrar o arquivo " << filepath << endl;
+	}
+	inputFile.close();
+	GLuint VBO, VAO;
+	nVerts = vbuffer.size() / 11;
+	glGenBuffers(1, &VBO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, vbuffer.size() * sizeof(GLfloat), vbuffer.data(), GL_STATIC_DRAW);
+	glGenVertexArrays(1, &VAO);
+
+	glBindVertexArray(VAO);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+	//Atributo cor (r, g, b)
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(1);
+	//Atributo coordenada de textura (s, t)
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+	//Atributo normal do vértice (x, y, z)
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(8 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(3);
+
+	// Observe que isso é permitido, a chamada para glVertexAttribPointer registrou o VBO como o objeto de buffer de vértice
+	// atualmente vinculado - para que depois possamos desvincular com segurança
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	// Desvincula o VAO (é uma boa prática desvincular qualquer buffer ou array para evitar bugs medonhos)
+	glBindVertexArray(0);
 	return VAO;
 }
