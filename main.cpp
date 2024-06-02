@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
 
 using namespace std;
 
@@ -31,6 +32,17 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+struct Material {
+	glm::vec3 Ka; // Ambient reflectivity
+	glm::vec3 Kd; // Diffuse reflectivity
+	glm::vec3 Ks; // Specular reflectivity
+	glm::vec3 Ke; // Emissive coefficient
+	float Ns;     // Specular exponent
+	float Ni;     // Optical density
+	float d;      // Transparency
+	int illum;    // Illumination model
+	std::string map_Kd; // Diffuse texture map
+};
 
 // Protótipo da função de callback de teclado
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -40,34 +52,63 @@ int setupShader();
 int setupGeometry();
 int loadTexture(string path);
 int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color);
+std::unordered_map<std::string, Material> loadMTL(const std::string& filename);
 
 // GLuint generateTexture(const std::string& filename);
 
 // Dimensões da janela (pode ser alterado em tempo de execução)
 const GLuint WIDTH = 1000, HEIGHT = 1000;
 
-const GLchar* vertexShaderSource = "#version 450\n"
+const GLchar* vertexShaderSource = "#version 450 core\n"
 "layout (location = 0) in vec3 position;\n"
-"layout (location = 1) in vec3 color;\n"
+"layout (location = 1) in vec3 normal;\n"
 "layout (location = 2) in vec2 texCoord;\n"
 "uniform mat4 model;\n"
-"out vec4 finalColor;\n"
+"uniform mat4 view;\n"
+"uniform mat4 projection;\n"
+"out vec3 FragPos;\n"
+"out vec3 Normal;\n"
 "out vec2 TexCoord;\n"
 "void main()\n"
 "{\n"
-"gl_Position = model * vec4(position, 1.0);\n"
-"finalColor = vec4(color, 1.0);\n"
-"TexCoord = texCoord;\n"
+"    FragPos = vec3(model * vec4(position, 1.0));\n"
+"    Normal = mat3(transpose(inverse(model))) * normal;\n"
+"    TexCoord = texCoord;\n"
+"    gl_Position = projection * view * vec4(FragPos, 1.0);\n"
 "}\0";
 
-const GLchar* fragmentShaderSource = "#version 450\n"
-"in vec4 finalColor;\n"
+const GLchar* fragmentShaderSource = "#version 450 core\n"
+"in vec3 FragPos;\n"
+"in vec3 Normal;\n"
 "in vec2 TexCoord;\n"
 "out vec4 color;\n"
+"uniform vec3 lightPos;\n"
+"uniform vec3 viewPos;\n"
+"uniform vec3 lightColor;\n"
 "uniform sampler2D ourTexture;\n"
+"uniform vec3 Ka;\n"
+"uniform vec3 Kd;\n"
+"uniform vec3 Ks;\n"
+"uniform float Ns;\n"
 "void main()\n"
 "{\n"
-"color = texture(ourTexture, TexCoord);\n"
+"    // Ambient\n"
+"    vec3 ambient = Ka * lightColor;\n"
+"\n"
+"    // Diffuse\n"
+"    vec3 norm = normalize(Normal);\n"
+"    vec3 lightDir = normalize(lightPos - FragPos);\n"
+"    float diff = max(dot(norm, lightDir), 0.0);\n"
+"    vec3 diffuse = Kd * diff * lightColor;\n"
+"\n"
+"    // Specular\n"
+"    vec3 viewDir = normalize(viewPos - FragPos);\n"
+"    vec3 reflectDir = reflect(-lightDir, norm);\n"
+"    float spec = pow(max(dot(viewDir, reflectDir), 0.0), Ns);\n"
+"    vec3 specular = Ks * spec * lightColor;\n"
+"\n"
+"    vec3 result = ambient + diffuse + specular;\n"
+"    color = texture(ourTexture, TexCoord) * vec4(result, 1.0);\n"
 "}\0";
 
 bool rotateX=false, rotateY=false, rotateZ=false;
@@ -122,82 +163,83 @@ int main()
 
 	// Compilando e buildando o programa de shader
 	GLuint shaderID = setupShader();
+    glUseProgram(shaderID);
 
-	glUseProgram(shaderID);
+    GLuint texID = loadTexture("../Cube.png");
+    int nVerts;
+    GLuint VAO = loadSimpleOBJ("../cube.obj", nVerts, glm::vec3(0,0,0));
 
-	//Carregando uma textura e armazenando o identificador na memória
-	GLuint texID = loadTexture("../Cube.png");
+    glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+    glm::vec3 viewPos(0.0f, 0.0f, 3.0f);
+    glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+    glm::vec3 objectColor(1.0f, 1.0f, 1.0f);
 
-	// Gerando uma geometria de quadrilátero com coordenadas de textura
-	int nVerts;
-	GLuint VAO = loadSimpleOBJ("../cube.obj", nVerts,glm::vec3(0,0,0));
-	glUniform1i(glGetUniformLocation(shaderID, "tex_buffer"), 0);
+    GLint modelLoc = glGetUniformLocation(shaderID, "model");
+    GLint viewLoc = glGetUniformLocation(shaderID, "view");
+    GLint projLoc = glGetUniformLocation(shaderID, "projection");
+    GLint lightPosLoc = glGetUniformLocation(shaderID, "lightPos");
+    GLint viewPosLoc = glGetUniformLocation(shaderID, "viewPos");
+    GLint lightColorLoc = glGetUniformLocation(shaderID, "lightColor");
+    GLint objectColorLoc = glGetUniformLocation(shaderID, "objectColor");
 
-	glm::mat4 model = glm::mat4(1); //matriz identidade;
-	GLint modelLoc = glGetUniformLocation(shaderID, "model");
-	//
-	model = glm::rotate(model, /*(GLfloat)glfwGetTime()*/glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-	glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glm::mat4 model = glm::mat4(1.0f);
+    glm::mat4 view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
 
-	glEnable(GL_DEPTH_TEST);
+    glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
+    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+    glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
+    glUniform3fv(objectColorLoc, 1, glm::value_ptr(objectColor));
 
+	std::unordered_map<std::string, Material> materials = loadMTL("../cube.mtl");
+	Material material = materials["Material"];
 
-	// Loop da aplicação - "game loop"
-	while (!glfwWindowShouldClose(window))
-	{
-		// Checa se houveram eventos de input (key pressed, mouse moved etc.) e chama as funções de callback correspondentes
-		glfwPollEvents();
+	glUniform3f(glGetUniformLocation(shaderID, "Ka"), material.Ka.r, material.Ka.g, material.Ka.b);
+	glUniform3f(glGetUniformLocation(shaderID, "Kd"), material.Kd.r, material.Kd.g, material.Kd.b);
+	glUniform3f(glGetUniformLocation(shaderID, "Ks"), material.Ks.r, material.Ks.g, material.Ks.b);
+	glUniform1f(glGetUniformLocation(shaderID, "Ns"), material.Ns);
 
-		// Limpa o buffer de cor
-		glClearColor(1.0f, 1.0f, 1.0f, 1.0f); //cor de fundo
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-		glLineWidth(10);
-		glPointSize(20);
+    glEnable(GL_DEPTH_TEST);
 
-		float angle = (GLfloat)glfwGetTime();
+    while (!glfwWindowShouldClose(window)) {
+        // Poll events and clear buffer
+        glfwPollEvents();
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		model = glm::mat4(1);
-		if (rotateX)
-		{
-			model = glm::rotate(model, angle, glm::vec3(1.0f, 0.0f, 0.0f));
+        // Update transformations
+        float angle = (GLfloat)glfwGetTime();
+        model = glm::mat4(1.0f);
+        if (rotateX) {
+            model = glm::rotate(model, angle, glm::vec3(1.0f, 0.0f, 0.0f));
+        } else if (rotateY) {
+            model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f));
+        } else if (rotateZ) {
+            model = glm::rotate(model, angle, glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+        model = glm::translate(model, translation);
+        model = glm::scale(model, glm::vec3(scale, scale, scale));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-		}
-		else if (rotateY)
-		{
-			model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f));
+        // Draw the object
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texID);
+        glUniform1i(glGetUniformLocation(shaderID, "ourTexture"), 0);
 
-		}
-		else if (rotateZ)
-		{
-			model = glm::rotate(model, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-		}
+        glBindVertexArray(VAO);
+        glDrawArrays(GL_TRIANGLES, 0, nVerts);
+        glBindVertexArray(0);
 
-		model = glm::translate(model, translation);
-		model = glm::scale(model, glm::vec3(scale, scale, scale));
+        // Swap buffers
+        glfwSwapBuffers(window);
+    }
 
-		glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-		// Chamada de desenho - drawcall
-		// Poligono Preenchido - GL_TRIANGLES
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, texID);
-		glUniform1i(glGetUniformLocation(shaderID, "ourTexture"), 0);
-
-		glBindVertexArray(VAO);
-		glDrawArrays(GL_TRIANGLES, 0, nVerts);
-
-		glBindVertexArray(0); //unbind - desconecta
-		glBindTexture(GL_TEXTURE_2D, 0); //unbind da textura
-
-		// Troca os buffers da tela
-		glfwSwapBuffers(window);
-	}
-	// Pede pra OpenGL desalocar os buffers
-	glDeleteVertexArrays(1, &VAO);
-	// Finaliza a execução da GLFW, limpando os recursos alocados por ela
-	glfwTerminate();
-	return 0;
+    glDeleteVertexArrays(1, &VAO);
+    glfwTerminate();
+    return 0;
 }
 
 // Função de callback de teclado - só pode ter uma instância (deve ser estática se
@@ -488,20 +530,17 @@ int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color)
 
 			istringstream ssline(line);
 			ssline >> word;
-			//cout << word << " ";
 			if (word == "v")
 			{
 				glm::vec3 v;
 				ssline >> v.x >> v.y >> v.z;
 
-				std::cout << "V: " << v.x << v.y << v.z << std::endl;
 				vertices.push_back(v);
 			}
 			if (word == "vt")
 			{
 				glm::vec2 vt;
 				ssline >> vt.s >> vt.t;
-				std::cout << "VT: " << vt.s << vt.t << std::endl;
 
 				texCoords.push_back(vt);
 			}
@@ -509,7 +548,6 @@ int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color)
 			{
 				glm::vec3 vn;
 				ssline >> vn.x >> vn.y >> vn.z;
-				std::cout << "V: " << vn.x << vn.y << vn.z << std::endl;
 
 				normals.push_back(vn);
 			}
@@ -584,4 +622,48 @@ int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color)
 	// Desvincula o VAO (é uma boa prática desvincular qualquer buffer ou array para evitar bugs medonhos)
 	glBindVertexArray(0);
 	return VAO;
+}
+
+std::unordered_map<std::string, Material> loadMTL(const std::string& filename) {
+	std::unordered_map<std::string, Material> materials;
+	std::ifstream file(filename);
+	std::string line, key;
+	Material currentMaterial;
+	std::string materialName;
+
+	while (std::getline(file, line)) {
+		std::istringstream iss(line);
+		iss >> key;
+
+		if (key == "newmtl") {
+			iss >> materialName;
+			currentMaterial = Material();
+			materials[materialName] = currentMaterial;
+		} else if (key == "Ns") {
+			float ns;
+			iss >> ns;
+			currentMaterial.Ns = ns;
+		} else if (key == "Ka") {
+			iss >> currentMaterial.Ka.r >> currentMaterial.Ka.g >> currentMaterial.Ka.b;
+		} else if (key == "Kd") {
+			iss >> currentMaterial.Kd.r >> currentMaterial.Kd.g >> currentMaterial.Kd.b;
+		} else if (key == "Ks") {
+			iss >> currentMaterial.Ks.r >> currentMaterial.Ks.g >> currentMaterial.Ks.b;
+		} else if (key == "Ke") {
+			iss >> currentMaterial.Ke.r >> currentMaterial.Ke.g >> currentMaterial.Ke.b;
+		} else if (key == "Ni") {
+			iss >> currentMaterial.Ni;
+		} else if (key == "d") {
+			iss >> currentMaterial.d;
+		} else if (key == "illum") {
+			iss >> currentMaterial.illum;
+		} else if (key == "map_Kd") {
+			iss >> currentMaterial.map_Kd;
+		}
+
+		if (!materialName.empty()) {
+			materials[materialName] = currentMaterial;
+		}
+	}
+	return materials;
 }
