@@ -1,12 +1,3 @@
-/* Hello Triangle - código adaptado de https://learnopengl.com/#!Getting-started/Hello-Triangle
- *
- * Adaptado por Rossana Baptista Queiroz
- * para a disciplina de Processamento Gráfico - Jogos Digitais - Unisinos
- * Versão inicial: 7/4/2017
- * Última atualização em 12/05/2023
- *
- */
-
 #include <iostream>
 #include <string>
 #include <assert.h>
@@ -27,7 +18,7 @@ using namespace std;
 // GLFW
 #include <GLFW/glfw3.h>
 
-//GLM
+// GLM
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -46,6 +37,8 @@ struct Material {
 
 // Protótipo da função de callback de teclado
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void process_input(GLFWwindow *window);
 
 // Protótipos das funções
 int setupShader();
@@ -53,8 +46,6 @@ int setupGeometry();
 int loadTexture(string path);
 int loadSimpleOBJ(string filepath, int& nVerts, glm::vec3 color);
 std::unordered_map<std::string, Material> loadMTL(const std::string& filename);
-
-// GLuint generateTexture(const std::string& filename);
 
 // Dimensões da janela (pode ser alterado em tempo de execução)
 const GLuint WIDTH = 1000, HEIGHT = 1000;
@@ -111,10 +102,23 @@ const GLchar* fragmentShaderSource = "#version 450 core\n"
 "    color = texture(ourTexture, TexCoord) * vec4(result, 1.0);\n"
 "}\0";
 
-bool rotateX=false, rotateY=false, rotateZ=false;
+bool rotateX = false, rotateY = false, rotateZ = false;
 
 glm::vec3 translation = glm::vec3(0.0f, 0.0f, 0.0f);
 float scale = 1.0f;
+
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+
+bool firstMouse = true;
+float yaw = -90.0f;
+float pitch = 0.0f;
+float lastX = WIDTH / 2.0;
+float lastY = HEIGHT / 2.0;
+float fov = 45.0f;
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
 
 // Função MAIN
 int main()
@@ -142,6 +146,8 @@ int main()
 
 	// Fazendo o registro da função de callback para a janela GLFW
 	glfwSetKeyCallback(window, key_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	// GLAD: carrega todos os ponteiros d funções da OpenGL
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -170,7 +176,6 @@ int main()
     GLuint VAO = loadSimpleOBJ("../cube.obj", nVerts, glm::vec3(0,0,0));
 
     glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
-    glm::vec3 viewPos(0.0f, 0.0f, 3.0f);
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(1.0f, 1.0f, 1.0f);
 
@@ -183,11 +188,11 @@ int main()
     GLint objectColorLoc = glGetUniformLocation(shaderID, "objectColor");
 
     glm::mat4 model = glm::mat4(1.0f);
-    glm::mat4 view = glm::lookAt(viewPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+    glm::mat4 projection = glm::perspective(glm::radians(fov), (float)WIDTH / (float)HEIGHT, 0.1f, 100.0f);
 
     glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
-    glUniform3fv(viewPosLoc, 1, glm::value_ptr(viewPos));
+    glUniform3fv(viewPosLoc, 1, glm::value_ptr(cameraPos));
     glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
     glUniform3fv(objectColorLoc, 1, glm::value_ptr(objectColor));
 
@@ -199,29 +204,40 @@ int main()
 	glUniform3f(glGetUniformLocation(shaderID, "Ks"), material.Ks.r, material.Ks.g, material.Ks.b);
 	glUniform1f(glGetUniformLocation(shaderID, "Ns"), material.Ns);
 
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    // Definindo a matriz de projeção para a janela
+    projection = glm::perspective(glm::radians(fov), (GLfloat)WIDTH / (GLfloat)HEIGHT, 0.1f, 100.0f);
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     glEnable(GL_DEPTH_TEST);
 
-    while (!glfwWindowShouldClose(window)) {
-        // Poll events and clear buffer
+    while (!glfwWindowShouldClose(window))
+    {
+        // Calcula o delta time do frame atual
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        // Checa se houveram eventos de input (ex: teclado, mouse)
         glfwPollEvents();
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        process_input(window);
+
+        // Limpa o buffer de cor
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Update transformations
-        float angle = (GLfloat)glfwGetTime();
-        model = glm::mat4(1.0f);
-        if (rotateX) {
-            model = glm::rotate(model, angle, glm::vec3(1.0f, 0.0f, 0.0f));
-        } else if (rotateY) {
-            model = glm::rotate(model, angle, glm::vec3(0.0f, 1.0f, 0.0f));
-        } else if (rotateZ) {
-            model = glm::rotate(model, angle, glm::vec3(0.0f, 0.0f, 1.0f));
-        }
-        model = glm::translate(model, translation);
+        glBindVertexArray(VAO);
+        glBindTexture(GL_TEXTURE_2D, texID);
+
+        // Atualiza a matriz de visualização (view) com base nas entradas do teclado e do mouse
+        view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+        // Atualiza a matriz de modelo (model) com base nas entradas do teclado
+        model = glm::translate(glm::mat4(1.0f), translation);
         model = glm::scale(model, glm::vec3(scale, scale, scale));
+        if (rotateX) model = glm::rotate(model, (GLfloat)glfwGetTime(), glm::vec3(1.0f, 0.0f, 0.0f));
+        if (rotateY) model = glm::rotate(model, (GLfloat)glfwGetTime(), glm::vec3(0.0f, 1.0f, 0.0f));
+        if (rotateZ) model = glm::rotate(model, (GLfloat)glfwGetTime(), glm::vec3(0.0f, 0.0f, 1.0f));
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
         // Draw the object
@@ -231,67 +247,117 @@ int main()
 
         glBindVertexArray(VAO);
         glDrawArrays(GL_TRIANGLES, 0, nVerts);
-        glBindVertexArray(0);
 
         // Swap buffers
         glfwSwapBuffers(window);
     }
 
-    glDeleteVertexArrays(1, &VAO);
     glfwTerminate();
     return 0;
 }
 
-// Função de callback de teclado - só pode ter uma instância (deve ser estática se
-// estiver dentro de uma classe) - É chamada sempre que uma tecla for pressionada
-// ou solta via GLFW
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-		glfwSetWindowShouldClose(window, GL_TRUE);
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+	    float velocity = 8.0f;
+        switch (key)
+        {
+        case GLFW_KEY_ESCAPE:
+            glfwSetWindowShouldClose(window, GL_TRUE);
+            break;
+        case GLFW_KEY_W:
+            cameraPos += cameraFront * deltaTime * velocity;
+            break;
+        case GLFW_KEY_S:
+            cameraPos -= cameraFront * deltaTime * velocity;
+            break;
+        case GLFW_KEY_A:
+            cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * deltaTime * velocity;
+            break;
+        case GLFW_KEY_D:
+            cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * deltaTime * velocity;
+            break;
+        case GLFW_KEY_Q:
+            translation.x += 0.1f;
+            break;
+        case GLFW_KEY_E:
+            translation.x -= 0.1f;
+            break;
+        case GLFW_KEY_R:
+            translation.y += 0.1f;
+            break;
+        case GLFW_KEY_F:
+            translation.y -= 0.1f;
+            break;
+        case GLFW_KEY_T:
+            translation.z += 0.1f;
+            break;
+        case GLFW_KEY_G:
+            translation.z -= 0.1f;
+            break;
+        case GLFW_KEY_Z:
+            scale += 0.1f;
+            break;
+        case GLFW_KEY_X:
+            scale -= 0.1f;
+            break;
+        case GLFW_KEY_1:
+            rotateX = !rotateX;
+            break;
+        case GLFW_KEY_2:
+            rotateY = !rotateY;
+            break;
+        case GLFW_KEY_3:
+            rotateZ = !rotateZ;
+            break;
+        default:
+            break;
+        }
+    }
+}
 
-	if (key == GLFW_KEY_X && action == GLFW_PRESS)
-	{
-		rotateX = true;
-		rotateY = false;
-		rotateZ = false;
-	}
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
 
-	if (key == GLFW_KEY_Y && action == GLFW_PRESS)
-	{
-		rotateX = false;
-		rotateY = true;
-		rotateZ = false;
-	}
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos;
+    lastX = xpos;
+    lastY = ypos;
 
-	if (key == GLFW_KEY_Z && action == GLFW_PRESS)
-	{
-		rotateX = false;
-		rotateY = false;
-		rotateZ = true;
-	}
+    float sensitivity = 0.1f;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
 
-	// Movimentação nos eixos X e Z (WASD)
-	if (key == GLFW_KEY_W && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.z -= 0.1f;
-	if (key == GLFW_KEY_S && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.z += 0.1f;
-	if (key == GLFW_KEY_A && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.x -= 0.1f;
-	if (key == GLFW_KEY_D && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.x += 0.1f;
+    yaw += xoffset;
+    pitch += yoffset;
 
-	// Movimentação no eixo Y (IJ)
-	if (key == GLFW_KEY_I && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.y += 0.1f;
-	if (key == GLFW_KEY_J && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		translation.y -= 0.1f;
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
 
-	// Escala uniforme ([ ])
-	if (key == GLFW_KEY_LEFT_BRACKET && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		scale -= 0.1f;
-	if (key == GLFW_KEY_RIGHT_BRACKET && (action == GLFW_PRESS || action == GLFW_REPEAT))
-		scale += 0.1f;
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+
+	glm::vec3 right = glm::normalize(glm::cross(cameraFront,
+	glm::vec3(0.0,1.0,0.0)));
+	cameraUp = glm::normalize(glm::cross(right, cameraFront));
+}
+
+void process_input(GLFWwindow *window)
+{
+    // Checa se houveram eventos de input (ex: teclado, mouse)
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
 }
 
 //Esta função está basntante hardcoded - objetivo é compilar e "buildar" um programa de
