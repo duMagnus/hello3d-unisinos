@@ -23,6 +23,33 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+std::vector<glm::vec3> pontos;
+size_t ponto_atual = 0;
+float tempo_percorrido = 0.0f;
+const float duracao_ponto = 2.0f; // duração de cada translação entre pontos em segundos
+
+void carregarPontos(const std::string& caminho) {
+	std::ifstream arquivo(caminho);
+	if (!arquivo.is_open()) {
+		std::cerr << "Erro ao abrir o arquivo de pontos: " << caminho << std::endl;
+		return;
+	}
+
+	std::string linha;
+	while (std::getline(arquivo, linha)) {
+		std::istringstream iss(linha);
+		float x, y, z;
+		if (iss >> x >> y >> z) {
+			pontos.emplace_back(x, y, z);
+		}
+	}
+	arquivo.close();
+}
+
+glm::vec3 interpolar(const glm::vec3& ponto_inicial, const glm::vec3& ponto_final, float t) {
+	return ponto_inicial + t * (ponto_final - ponto_inicial);
+}
+
 struct Material {
 	glm::vec3 Ka; // Ambient reflectivity
 	glm::vec3 Kd; // Diffuse reflectivity
@@ -167,6 +194,13 @@ int main()
 	glfwGetFramebufferSize(window, &width, &height);
 	glViewport(0, 0, width, height);
 
+	carregarPontos("../pontos.txt");
+	if (pontos.empty()) {
+		std::cerr << "Nenhum ponto foi carregado. Encerrando a aplicação." << std::endl;
+		glfwTerminate();
+		return -1;
+	}
+
 	// Compilando e buildando o programa de shader
 	GLuint shaderID = setupShader();
     glUseProgram(shaderID);
@@ -232,6 +266,16 @@ int main()
         view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
+    	tempo_percorrido += deltaTime;
+    	if (tempo_percorrido >= duracao_ponto) {
+    		tempo_percorrido = 0.0f;
+    		ponto_atual = (ponto_atual + 1) % pontos.size();
+    	}
+
+    	size_t proximo_ponto = (ponto_atual + 1) % pontos.size();
+    	float t = tempo_percorrido / duracao_ponto;
+    	translation = interpolar(pontos[ponto_atual], pontos[proximo_ponto], t);
+
         // Atualiza a matriz de modelo (model) com base nas entradas do teclado
         model = glm::translate(glm::mat4(1.0f), translation);
         model = glm::scale(model, glm::vec3(scale, scale, scale));
@@ -259,7 +303,7 @@ int main()
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-	    float velocity = 8.0f;
+	    float velocity = 20.0f;
         switch (key)
         {
         case GLFW_KEY_ESCAPE:
